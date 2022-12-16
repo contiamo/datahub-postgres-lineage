@@ -1,0 +1,13 @@
+source:
+  type: datahub_postgres_lineage.ingestion.PostgresLineageSource
+  config:
+    # Coordinates
+    host_port: localhost:6432
+    database: cool_db
+
+    # Credentials
+    username: normal_user
+    password: password
+
+sink:
+  type: console
