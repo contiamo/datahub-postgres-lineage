@@ -1,38 +1,34 @@
-from contextlib import contextmanager
 import logging
-from typing import Iterable, List, Optional
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterable, List, Optional
 
-from pydantic import BaseModel
-
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Connection, CursorResult
-
-from datahub.ingestion.source.sql.postgres import PostgresConfig
-from datahub.ingestion.source.sql.sql_common import SQLAlchemySource
-from datahub.ingestion.api.source import TestableSource
-from datahub.ingestion.api.workunit import MetadataWorkUnit
-
-from datahub.ingestion.source.state.stateful_ingestion_base import (
-    StatefulIngestionSourceBase,
-)
+from datahub.configuration.common import AllowDenyPattern
+from datahub.emitter import mce_builder
+from datahub.emitter.mcp_builder import mcps_from_mce
 from datahub.ingestion.api.decorators import (
     SupportStatus,
     config_class,
     platform_name,
     support_status,
 )
-
-# from datahub.metadata.com.linkedin.pegasus2avro.dataset import (
-#     DatasetProperties,
-#     UpstreamLineage,
-#     ViewProperties,
-# )
-
-from datahub.emitter import mce_builder
-from datahub.emitter.mcp_builder import (
-    mcps_from_mce,
-    # wrap_aspect_as_workunit
+from datahub.ingestion.api.common import PipelineContext
+from datahub.ingestion.api.source import TestableSource, SourceReport
+from datahub.ingestion.api.workunit import MetadataWorkUnit
+from datahub.ingestion.source.sql.postgres import PostgresConfig
+from datahub.ingestion.source.sql.sql_common import (
+    make_sqlalchemy_uri,
 )
+from datahub.ingestion.source.state.stateful_ingestion_base import (
+    StatefulIngestionConfigBase,
+    StatefulIngestionSourceBase,
+)
+from datahub.utilities.lossy_collections import LossyList
+
+from pydantic import BaseModel, Field, SecretStr
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Connection, CursorResult
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -84,28 +80,95 @@ class ViewLineageEntry(BaseModel):
     dependent_schema: str
 
 
-class ViewLineage(BaseModel):
-    lineage: List[ViewLineageEntry]
+@dataclass
+class LineageSourceReport(SourceReport):
+    filtered: LossyList[str] = field(default_factory=LossyList)
+
+    def report_dropped(self, ent_name: str) -> None:
+        self.filtered.append(ent_name)
 
 
-class PostgresLineageConfig(PostgresConfig):
-    pass
+class PostgresLineageConfig(StatefulIngestionConfigBase):
+    username: Optional[str] = Field(default=None, description="username")
+    password: Optional[SecretStr] = Field(
+        default=None, exclude=True, description="password"
+    )
+    host_port: str = Field(description="host URL")
+    database: Optional[str] = Field(default=None, description="database name")
+    database_alias: Optional[str] = Field(
+        default=None, description="Alias to apply to database when ingesting."
+    )
+    sqlalchemy_uri: Optional[str] = Field(
+        default=None,
+        description="URI of database to connect to. See https://docs.sqlalchemy.org/en/14/core/engines.html#database-urls. Takes precedence over other connection parameters.",
+    )
+
+    # defaults
+    scheme = Field(default="postgresql+psycopg2", description="database scheme")
+    schema_pattern: AllowDenyPattern = Field(
+        default=AllowDenyPattern.allow_all(),
+        description="Regex patterns for schemas to filter in ingestion. Both 'information_schema' and 'pg_catalog' are excluded by default.",
+    )
+    view_pattern: AllowDenyPattern = Field(
+        default=AllowDenyPattern.allow_all(),
+        description="Regex patterns for views to filter in ingestion.",
+    )
+
+    def get_identifier(self, schema: str, table: str) -> str:
+        regular = f"{schema}.{table}"
+        if self.database_alias:
+            return f"{self.database_alias}.{regular}"
+        if self.database:
+            return f"{self.database}.{regular}"
+        return regular
+
+    def get_sql_alchemy_url(self, uri_opts: Optional[Dict[str, Any]] = None) -> str:
+        if not ((self.host_port and self.scheme) or self.sqlalchemy_uri):
+            raise ValueError("host_port and schema or connect_uri required.")
+
+        return self.sqlalchemy_uri or make_sqlalchemy_uri(
+            self.scheme,  # type: ignore
+            self.username,
+            self.password.get_secret_value() if self.password is not None else None,
+            self.host_port,  # type: ignore
+            self.database,
+            uri_opts=uri_opts,
+        )
 
 
-@platform_name("Postgres")
+@platform_name("PostgresLineage")
 @config_class(PostgresLineageConfig)
 @support_status(SupportStatus.TESTING)
-class PostgresLineageSource(
-    SQLAlchemySource, StatefulIngestionSourceBase, TestableSource
-):
-    def __init__(self, config, ctx):
-        super().__init__(config, ctx, "postgres")
+class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
+    def __init__(self, config: PostgresLineageConfig, ctx: PipelineContext):
+        super().__init__(config, ctx)
+        self.platform = "postgres"
         self.config = config
+        self.report = LineageSourceReport()
 
+    ### Start required abstract class methods
     @classmethod
     def create(cls, config_dict, ctx):
         config = PostgresConfig.parse_obj(config_dict)
         return cls(config, ctx)
+
+    def get_platform_instance_id(self) -> str:
+        """
+        The source identifier such as the specific source host address required for stateful ingestion.
+        Individual subclasses need to override this method appropriately.
+        """
+        config_dict = self.config.dict()
+        host_port = config_dict.get("host_port", "no_host_port")
+        database = config_dict.get("database", "no_database")
+        return f"{self.platform}_{host_port}_{database}"
+
+    def get_report(self):
+        return self.report
+
+    def close(self) -> None:
+        super().close()
+
+    ### End required abstract class methods
 
     def test_connection(self):
         with self._get_connection() as conn:
@@ -132,19 +195,22 @@ class PostgresLineageSource(
         if len(data) == 0:
             return None
 
-        # original reference was https://github.com/datahub-project/datahub/blob/9a1f78fc60f692ebbd57c0a8cbabe4bfde44376b/metadata-ingestion/src/datahub/ingestion/source/snowflake/snowflake_utils.py#L193
-        # but the only addition seems to be a call to self.report
-        # dataset_urn = "urn:li:dataset:(urn:li:dataPlatform:postgres,{},PROD)".format(
-        #     "test"
-        # )
-        # upstream_lineage: Optional[UpstreamLineage] = None
-        # yield wrap_aspect_as_workunit(
-        #     "dataset", dataset_urn, "upstreamLineage", upstream_lineage
-        # )
-
         lineage_elements = {}
         # Loop over the lineages in the JSON data.
         for lineage in data:
+
+            if not self.config.view_pattern.allowed(lineage.dependent_view):
+                self.report.report_dropped(
+                    f"{lineage.dependent_schema}.{lineage.dependent_view}"
+                )
+                continue
+
+            if not self.config.schema_pattern.allowed(lineage.dependent_schema):
+                self.report.report_dropped(
+                    f"{lineage.dependent_schema}.{lineage.dependent_view}"
+                )
+                continue
+
             # Check if the dependent view + source schema already exists in the dictionary, if not create a new entry.
             # Use ':::::' to join as it is unlikely to be part of a schema or view name.
             key = ":::::".join([lineage.dependent_view, lineage.dependent_schema])
@@ -157,7 +223,7 @@ class PostgresLineageSource(
                     "postgres",
                     ".".join(
                         [
-                            self.config.database,
+                            self.config.database_alias or self.config.database,
                             lineage.source_schema,
                             lineage.source_table,
                         ]
@@ -177,6 +243,9 @@ class PostgresLineageSource(
                 ".".join([self.config.database, dependent_schema, dependent_view]),
                 self.config.env,
             )
+
+            # use the mce_builder to ensure that the change proposal inherits
+            # the correct defaults for auditHeader and systemMetadata
             lineage_mce = mce_builder.make_lineage_mce(
                 source_tables,
                 urn,

@@ -1,0 +1,83 @@
+version: 3
+
+env:
+  VENV: '{{default (printf "%s/%s" .ROOT_DIR ".venv") .VENV}}'
+  # ENV and CONFIG_DIR are used in local development only to locate the config and secrets files
+  ENV: '{{default "local" .ENV}}'
+  CONFIG_DIR: '{{default "./env" .CONFIG_DIR}}'
+  PROJECT_NAME: '{{default "datahub-pg-lineage" .PROJECT_NAME}}'
+
+dotenv:
+  - "{{.CONFIG_DIR}}/{{.ENV}}/.env"
+  - ".env"
+
+tasks:
+  debug:
+    cmds:
+      - "echo ENV: {{.ENV}}"
+      - "echo VENV: {{.VENV}}"
+      - "echo CONFIG_DIR: {{.CONFIG_DIR}}"
+
+  setup:
+    desc: setup the development environment
+    cmds:
+      - poetry install
+
+  wait:
+    cmds:
+      - sleep {{.SLEEP}}
+    vars:
+      SLEEP: 5
+
+  run:
+    desc: run the ingestion pipeline
+    vars:
+      recipe: '{{default (printf "env/%s/recipe.yaml" .ENV) .recipe }}'
+    cmds:
+      - poetry run datahub ingest -c {{.recipe}}
+
+  start:
+    desc: start a local databases
+    cmds:
+      - >
+        docker-compose
+        -p {{.PROJECT_NAME}}
+        -f env/local/docker-compose.yaml
+        up -d
+    status:
+      - docker-compose -p {{.PROJECT_NAME}} -f env/local/docker-compose.yaml ps sample-db | grep 'sample-db'
+
+  stop:
+    desc: stop the development databases
+    cmds:
+      - >
+        docker-compose
+        -p {{.PROJECT_NAME}}
+        -f env/local/docker-compose.yaml
+        down
+    preconditions:
+      - sh: docker-compose -p {{.PROJECT_NAME}} -f env/local/docker-compose.yaml ps sample-db | grep 'sample-db'
+        msg: database is not running
+
+  clean:
+    desc: remove the development databases
+    cmds:
+      - >
+        docker-compose
+        -p {{.PROJECT_NAME}}
+        -f env/local/docker-compose.yaml
+        down -v
+
+  sample-view:
+    desc: create a sample view
+    cmds:
+      - psql -f env/local/sample.sql
+    status:
+      - psql -At -c "select 1 from information_schema.views where table_name = 'names'" | grep "1"
+      - psql -At -c "select 1 from information_schema.views where table_name = 'emails'" | grep "1"
+
+  psql:
+    interactive: true
+    desc: open psql to the database
+    cmds:
+      - psql {{.CLI_ARGS}}

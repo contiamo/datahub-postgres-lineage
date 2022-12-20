@@ -3,11 +3,15 @@ source:
   config:
     # Coordinates
     host_port: localhost:6432
-    database: cool_db
+    database: ${PGDATABASE}
 
     # Credentials
-    username: normal_user
-    password: password
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
+
+    view_pattern:
+      deny:
+        - "names"
 
 sink:
   type: console
