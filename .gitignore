@@ -1,3 +1,6 @@
 __pycache__
 .venv
 .pytest_cache
+.env
+dist/
+.mypy_cache

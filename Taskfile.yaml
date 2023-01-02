@@ -23,6 +23,39 @@ tasks:
     cmds:
       - poetry install
 
+  build:
+    desc: build the python package
+    cmds:
+      - poetry build
+
+  publish:
+    desc: publish the python package
+    cmds:
+      - poetry publish
+
+  flake:
+    internal: true
+    cmds:
+      - poetry run flake8 datahub_postgres_lineage
+
+  format:
+    internal: true
+    cmds:
+      - poetry run black --check .
+      # - poetry run isort --check-only .
+
+  typings:
+    internal: true
+    cmds:
+      - poetry run mypy .
+
+  lint:
+    desc: lint the python package
+    deps:
+      - flake
+      - format
+      - typings
+
   wait:
     cmds:
       - sleep {{.SLEEP}}
@@ -71,7 +104,7 @@ tasks:
   sample-view:
     desc: create a sample view
     cmds:
-      - psql -f env/local/sample.sql
+      - psql -f {{.CONFIG_DIR}}/{{.ENV}}/sample.sql
     status:
       - psql -At -c "select 1 from information_schema.views where table_name = 'names'" | grep "1"
       - psql -At -c "select 1 from information_schema.views where table_name = 'emails'" | grep "1"

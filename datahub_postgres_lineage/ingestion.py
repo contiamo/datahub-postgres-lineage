@@ -1,34 +1,38 @@
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+)
 
 from datahub.configuration.common import AllowDenyPattern
 from datahub.emitter import mce_builder
 from datahub.emitter.mcp_builder import mcps_from_mce
+from datahub.ingestion.api.common import PipelineContext
 from datahub.ingestion.api.decorators import (
     SupportStatus,
     config_class,
     platform_name,
     support_status,
 )
-from datahub.ingestion.api.common import PipelineContext
-from datahub.ingestion.api.source import TestableSource, SourceReport
+from datahub.ingestion.api.source import SourceReport, TestableSource
 from datahub.ingestion.api.workunit import MetadataWorkUnit
 from datahub.ingestion.source.sql.postgres import PostgresConfig
-from datahub.ingestion.source.sql.sql_common import (
-    make_sqlalchemy_uri,
-)
+from datahub.ingestion.source.sql.sql_common import make_sqlalchemy_uri
 from datahub.ingestion.source.state.stateful_ingestion_base import (
     StatefulIngestionConfigBase,
     StatefulIngestionSourceBase,
 )
 from datahub.utilities.lossy_collections import LossyList
-
 from pydantic import BaseModel, Field, SecretStr
-
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Connection, CursorResult
+from sqlalchemy.engine import Connection
+from sqlalchemy.engine.cursor import CursorResult
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -89,6 +93,8 @@ class LineageSourceReport(SourceReport):
 
 
 class PostgresLineageConfig(StatefulIngestionConfigBase):
+    options: dict = {}
+
     username: Optional[str] = Field(default=None, description="username")
     password: Optional[SecretStr] = Field(
         default=None, exclude=True, description="password"
@@ -140,6 +146,9 @@ class PostgresLineageConfig(StatefulIngestionConfigBase):
 @config_class(PostgresLineageConfig)
 @support_status(SupportStatus.TESTING)
 class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
+    config: PostgresLineageConfig  # type: ignore
+    report: LineageSourceReport  # type: ignore
+
     def __init__(self, config: PostgresLineageConfig, ctx: PipelineContext):
         super().__init__(config, ctx)
         self.platform = "postgres"
@@ -149,7 +158,7 @@ class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
     ### Start required abstract class methods
     @classmethod
     def create(cls, config_dict, ctx):
-        config = PostgresConfig.parse_obj(config_dict)
+        config = PostgresLineageConfig.parse_obj(config_dict)
         return cls(config, ctx)
 
     def get_platform_instance_id(self) -> str:
@@ -195,7 +204,7 @@ class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
         if len(data) == 0:
             return None
 
-        lineage_elements = {}
+        lineage_elements: Dict[str, List[str]] = {}
         # Loop over the lineages in the JSON data.
         for lineage in data:
 
@@ -221,12 +230,9 @@ class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
             lineage_elements[key].append(
                 mce_builder.make_dataset_urn(
                     "postgres",
-                    ".".join(
-                        [
-                            self.config.database_alias or self.config.database,
-                            lineage.source_schema,
-                            lineage.source_table,
-                        ]
+                    self.config.get_identifier(
+                        lineage.source_schema,
+                        lineage.source_table,
                     ),
                     self.config.env,
                 )
@@ -240,7 +246,10 @@ class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
             # Construct a lineage object.
             urn = mce_builder.make_dataset_urn(
                 "postgres",
-                ".".join([self.config.database, dependent_schema, dependent_view]),
+                self.config.get_identifier(
+                    lineage.dependent_schema,
+                    lineage.dependent_view,
+                ),
                 self.config.env,
             )
 
@@ -257,7 +266,7 @@ class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
                 yield wu
 
     @contextmanager
-    def _get_connection(self) -> Connection:
+    def _get_connection(self) -> Iterator[Connection]:
         # This method can be overridden in the case that you want to dynamically
         # run on multiple databases.
 

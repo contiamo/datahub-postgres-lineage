@@ -1,0 +1,17 @@
+source:
+  type: datahub_postgres_lineage.ingestion.PostgresLineageSource
+  config:
+    # Coordinates
+    host_port: localhost:5432
+    database: ${PGDATABASE}
+
+    # Credentials
+    username: ${PGUSER}
+    password: ${PGPASSWORD}
+
+    view_pattern:
+      deny:
+        - "names"
+
+sink:
+  type: console

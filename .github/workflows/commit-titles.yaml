@@ -1,0 +1,40 @@
+name: "Conventional commit titles"
+on:
+  pull_request:
+    types:
+      # Check title when opened.
+      - opened
+      # Check title when new commits are pushed.
+      # Required to use as a status check.
+      - synchronize
+      # When the title or description change
+      - edited
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v6
+        env:
+          # Ensure pull request titles match the Conventional Commits specification
+          # https://www.conventionalcommits.org/en/v1.0.0/
+          regex: '^(feat|fix|chore|ci|refactor|test|docs)(\(.*\))?!?:'
+        with:
+          script: |
+            if (context.eventName != "pull_request") {
+              core.setFailed("This action only works on pull_request events");
+              return;
+            }
+            core.info(`Checking pull request title with regex: ${process.env.regex}`);
+            const regex = RegExp(process.env.regex);
+            const {data: pullRequest} = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number
+            });
+            const title = pullRequest.title;
+            core.info(`Pull Request title: "${title}"`);
+            if (!regex.test(title)) {
+                core.setFailed(`Pull Request title "${title}" failed to pass match regex - ${regex}`);
+                return;
+            }
