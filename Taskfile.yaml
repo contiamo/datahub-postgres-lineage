@@ -33,6 +33,29 @@ tasks:
     cmds:
       - poetry publish
 
+  flake:
+    internal: true
+    cmds:
+      - poetry run flake8 datahub_postgres_lineage
+
+  format:
+    internal: true
+    cmds:
+      - poetry run black --check .
+      # - poetry run isort --check-only .
+
+  typings:
+    internal: true
+    cmds:
+      - poetry run mypy .
+
+  lint:
+    desc: lint the python package
+    deps:
+      - flake
+      - format
+      - typings
+
   wait:
     cmds:
       - sleep {{.SLEEP}}
