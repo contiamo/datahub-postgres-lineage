@@ -47,7 +47,7 @@ jobs:
         uses: arduino/setup-task@v1
 
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.9
 
@@ -83,16 +83,14 @@ jobs:
       - name: Setup Task
         uses: arduino/setup-task@v1
 
+      # based on https://github.com/actions/setup-python/blob/main/docs/advanced-usage.md#caching-packages
+      - name: Install poetry
+        run: pipx install poetry
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
-          python-version: 3.9
-
-      - uses: Gr1N/setup-poetry@v8
-      - uses: actions/cache@v2
-        with:
-          path: ~/.cache/pypoetry/virtualenvs
-          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+          python-version-file: ".python-version"
+          cache: poetry
 
       - name: Setup package
         run: task setup
