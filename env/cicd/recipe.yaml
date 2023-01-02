@@ -2,7 +2,7 @@ source:
   type: datahub_postgres_lineage.ingestion.PostgresLineageSource
   config:
     # Coordinates
-    host_port: localhost:6432
+    host_port: localhost:5432
     database: ${PGDATABASE}
 
     # Credentials
