@@ -101,4 +101,6 @@ jobs:
         run: task build
 
       - name: Publish package
+        env:
+          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
         run: task publish

@@ -21,7 +21,7 @@ tasks:
   setup:
     desc: setup the development environment
     cmds:
-      - poetry install
+      - poetry install --with dev
 
   build:
     desc: build the python package
