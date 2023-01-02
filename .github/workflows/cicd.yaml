@@ -52,7 +52,6 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version-file: ".python-version"
           cache: poetry
 
       - name: Setup package
@@ -87,7 +86,6 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version-file: ".python-version"
           cache: poetry
 
       - name: Setup package
