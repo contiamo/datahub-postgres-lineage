@@ -1,0 +1,104 @@
+name: "CI/CD"
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - synchronize
+      - opened
+      - reopened
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Test
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: postgres_pass
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres_pass
+      ENV: cicd
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Get Metadata
+        id: metadata
+        uses: contiamo/git-metadata-action@main
+      - name: Setup Task
+        uses: arduino/setup-task@v1
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+
+      - uses: Gr1N/setup-poetry@v8
+      - uses: actions/cache@v2
+        with:
+          path: ~/.cache/pypoetry/virtualenvs
+          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+
+      - name: Setup package
+        run: task setup
+
+      - name: Setup database
+        run: task sample-view
+
+      - name: Test package
+        run: task run
+
+  publish:
+    # Only run if we're on main branch or it's a release:
+    if: github.event_name == 'release'
+    needs: [test]
+    runs-on: ubuntu-latest
+    name: Build and Publish package
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Get Metadata
+        id: metadata
+        uses: contiamo/git-metadata-action@main
+      - name: Setup Task
+        uses: arduino/setup-task@v1
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+
+      - uses: Gr1N/setup-poetry@v8
+      - uses: actions/cache@v2
+        with:
+          path: ~/.cache/pypoetry/virtualenvs
+          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+
+      - name: Setup package
+        run: task setup
+
+      - name: Build package
+        run: task build
+
+      - name: Publish package
+        run: task publish

@@ -23,6 +23,16 @@ tasks:
     cmds:
       - poetry install
 
+  build:
+    desc: build the python package
+    cmds:
+      - poetry build
+
+  publish:
+    desc: publish the python package
+    cmds:
+      - poetry publish
+
   wait:
     cmds:
       - sleep {{.SLEEP}}
@@ -71,7 +81,7 @@ tasks:
   sample-view:
     desc: create a sample view
     cmds:
-      - psql -f env/local/sample.sql
+      - psql -f {{.CONFIG_DIR}}/{{.ENV}}/sample.sql
     status:
       - psql -At -c "select 1 from information_schema.views where table_name = 'names'" | grep "1"
       - psql -At -c "select 1 from information_schema.views where table_name = 'emails'" | grep "1"
