@@ -52,7 +52,7 @@ jobs:
           python-version: 3.9
 
       - uses: Gr1N/setup-poetry@v8
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         with:
           path: ~/.cache/pypoetry/virtualenvs
           key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
@@ -89,7 +89,7 @@ jobs:
           python-version: 3.9
 
       - uses: Gr1N/setup-poetry@v8
-      - uses: actions/cache@v2
+      - uses: actions/cache@v3
         with:
           path: ~/.cache/pypoetry/virtualenvs
           key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
