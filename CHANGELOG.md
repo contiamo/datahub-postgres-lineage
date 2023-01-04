@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/contiamo/datahub-postgres-lineage/compare/v0.1.2...v0.1.3) (2023-01-04)
+
+
+### Bug Fixes
+
+* correctly use dependent view info during final loop ([b763f89](https://github.com/contiamo/datahub-postgres-lineage/commit/b763f89eaae5422d3a3f59f87ef0db8f67ce974f))
+
 ## [0.1.2](https://github.com/contiamo/datahub-postgres-lineage/compare/v0.1.1...v0.1.2) (2023-01-02)
 
 
