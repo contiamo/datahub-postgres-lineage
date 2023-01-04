@@ -1,7 +1,7 @@
 
 [tool.poetry]
 name = "datahub-postgres-lineage"
-version = "0.1.2"
+version = "0.1.3"
 description = "Extract table lineage from Postgres views"
 authors = ["Contiamo <developers@contiamo.com>"]
 license = "Apache-2.0"
