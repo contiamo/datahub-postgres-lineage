@@ -9,9 +9,9 @@ source:
     username: ${PGUSER}
     password: ${PGPASSWORD}
 
-    view_pattern:
-      deny:
-        - "names"
+    # view_pattern:
+    #   deny:
+    #     - "names"
 
 sink:
   type: console

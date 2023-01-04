@@ -207,7 +207,6 @@ class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
         lineage_elements: Dict[str, List[str]] = {}
         # Loop over the lineages in the JSON data.
         for lineage in data:
-
             if not self.config.view_pattern.allowed(lineage.dependent_view):
                 self.report.report_dropped(
                     f"{lineage.dependent_schema}.{lineage.dependent_view}"
@@ -247,8 +246,8 @@ class PostgresLineageSource(StatefulIngestionSourceBase, TestableSource):
             urn = mce_builder.make_dataset_urn(
                 "postgres",
                 self.config.get_identifier(
-                    lineage.dependent_schema,
-                    lineage.dependent_view,
+                    dependent_schema,
+                    dependent_view,
                 ),
                 self.config.env,
             )
